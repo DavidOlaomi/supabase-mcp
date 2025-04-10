@@ -1,0 +1,24 @@
+{
+  "name": "supabase-mcp",
+  "version": "1.0.0",
+  "description": "A Model Context Protocol (MCP) server that provides tools for interacting with a Supabase database. This server enables AI assistants to perform database operations through a standardized interface.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coleam00/supabase-mcp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/coleam00/supabase-mcp/issues"
+  },
+  "homepage": "https://github.com/coleam00/supabase-mcp#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "dotenv": "^16.4.7"
+  }
+}
