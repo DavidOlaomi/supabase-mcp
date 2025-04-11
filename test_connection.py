@@ -15,7 +15,6 @@ if not supabase_url or not supabase_key:
 
 # Initialize Supabase client
 supabase: Client = create_client(supabase_url, supabase_key)
-
 def test_connection():
     try:
         # Query tasks table
