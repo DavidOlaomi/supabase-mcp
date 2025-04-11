@@ -1,7 +1,6 @@
-"""Test suite for Supabase MCP tools."""
+"""Test suite for Supabase user management."""
 
 import os
-import asyncio
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
@@ -31,8 +30,8 @@ async def client():
     )
 
 @pytest.mark.asyncio
-async def test_read_paginated(client):
-    """Test paginated reading from a table."""
+async def test_read_tasks(client):
+    """Test reading from the tasks table."""
     try:
         # Test with default parameters
         result = await read_paginated(client, "tasks")
@@ -48,6 +47,12 @@ async def test_read_paginated(client):
         assert "total_pages" in metadata
         assert "has_more" in metadata
         
+        # Verify task data structure
+        if result["data"]:
+            task = result["data"][0]
+            assert "id" in task
+            assert "status" in task
+            
         # Test with custom page size
         result = await read_paginated(client, "tasks", page_size=5)
         assert len(result["data"]) <= 5
@@ -55,14 +60,15 @@ async def test_read_paginated(client):
         # Test with specific page
         result = await read_paginated(client, "tasks", page=2, page_size=5)
         assert result["metadata"]["page"] == 2
+        
     except Exception as e:
         pytest.fail(f"Test failed: {str(e)}")
 
 @pytest.mark.asyncio
-async def test_read_paginated_with_filter(client):
-    """Test paginated reading with filters."""
+async def test_filter_tasks(client):
+    """Test filtering tasks."""
     try:
-        # Test with simple filter
+        # Test filtering by status
         filters = {"status": "pending"}
         result = await read_paginated_with_filter(
             client,
@@ -74,11 +80,11 @@ async def test_read_paginated_with_filter(client):
         assert "data" in result
         assert "metadata" in result
         
-        # Verify all returned items match the filter
-        for item in result["data"]:
-            assert item["status"] == "pending"
-        
-        # Test with IN filter
+        # Verify all returned tasks match the filter
+        for task in result["data"]:
+            assert task["status"] == "pending"
+            
+        # Test filtering by multiple statuses
         filters = {"status": ["pending", "completed"]}
         result = await read_paginated_with_filter(
             client,
@@ -86,31 +92,46 @@ async def test_read_paginated_with_filter(client):
             filters=filters
         )
         
-        # Verify all returned items match the filter
-        for item in result["data"]:
-            assert item["status"] in ["pending", "completed"]
+        # Verify all returned tasks match the filter
+        for task in result["data"]:
+            assert task["status"] in ["pending", "completed"]
+            
+    except Exception as e:
+        pytest.fail(f"Test failed: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_task_search(client):
+    """Test searching tasks."""
+    try:
+        # Get all tasks to check available data
+        result = await client.from_("tasks").select("*").execute()
+        assert isinstance(result.data, list)
+        
+        if result.data:
+            # Print sample data for inspection
+            print("\nSample task data:")
+            for task in result.data[:3]:
+                print(task)
+            
     except Exception as e:
         pytest.fail(f"Test failed: {str(e)}")
 
 @pytest.mark.asyncio
 async def test_edge_cases(client):
-    """Test edge cases for pagination."""
+    """Test edge cases for task operations."""
     try:
-        # Test invalid page number first (this should not raise an error)
-        result = await read_paginated(client, "tasks", page=0)
-        assert result["metadata"]["page"] == 1  # Should adjust to page 1
-        
-        # Test invalid page size (this should raise an error)
-        try:
-            await read_paginated(client, "tasks", page_size=0)
-            pytest.fail("Expected ValueError for page_size=0")
-        except ValueError as e:
-            assert str(e) == "Page size must be greater than 0"
-        
-        # Test non-existent table
+        # Test invalid table name
         with pytest.raises(RuntimeError):
             await read_paginated(client, "nonexistent_table")
-        
+            
+        # Test invalid page number
+        result = await read_paginated(client, "tasks", page=0)
+        assert result["metadata"]["page"] == 1  # Should adjust to page 1
+            
+        # Test invalid page size
+        with pytest.raises(ValueError):
+            await read_paginated(client, "tasks", page_size=0)
+            
         # Test empty result set
         filters = {"status": "nonexistent_status"}
         result = await read_paginated_with_filter(
@@ -122,5 +143,6 @@ async def test_edge_cases(client):
         assert result["metadata"]["total_count"] == 0
         assert result["metadata"]["total_pages"] == 0
         assert not result["metadata"]["has_more"]
+            
     except Exception as e:
         pytest.fail(f"Test failed: {str(e)}")

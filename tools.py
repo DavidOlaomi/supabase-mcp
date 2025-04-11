@@ -31,19 +31,20 @@ async def read_paginated(
             - total_pages: Total number of pages
             - has_more: Whether there are more pages
     """
+    # Validate page size first
+    if not isinstance(page_size, int) or page_size < 1:
+        raise ValueError("Page size must be greater than 0")
+        
     try:
-        # Validate input
-        if page < 1:
-            raise ValueError("Page number must be greater than 0")
-        if page_size < 1:
-            raise ValueError("Page size must be greater than 0")
+        # Validate and adjust page number
+        page = max(1, page)  # Adjust invalid page to 1
             
         # Calculate offset for pagination
         offset = (page - 1) * page_size
         
         # Get total count first
-        count_result = await client.from_(table_name).select("*", count='exact').execute()
-        total_count = count_result.count if count_result.count is not None else 0
+        count_result = await client.from_(table_name).select("id").execute()
+        total_count = len(count_result.data)
         
         if total_count == 0:
             return {
@@ -65,13 +66,14 @@ async def read_paginated(
             page = total_pages
             offset = (page - 1) * page_size
         
-        # Get paginated data using headers for pagination
-        query = client.from_(table_name).select(select)
-        query.headers = {
-            "Range-Unit": "items",
-            "Range": f"{offset}-{offset + page_size - 1}"
-        }
-        result = await query.execute()
+        # Get paginated data
+        result = await (
+            client.from_(table_name)
+            .select(select)
+            .order("id")  # Ensure consistent ordering
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
         
         return {
             "data": result.data,
@@ -111,35 +113,41 @@ async def read_paginated_with_filter(
     Returns:
         Same as read_paginated, but with filtered data
     """
+    # Validate page size first
+    if not isinstance(page_size, int) or page_size < 1:
+        raise ValueError("Page size must be greater than 0")
+        
     try:
+        # Validate and adjust page number
+        page = max(1, page)  # Adjust invalid page to 1
+            
         # Start with base query
-        query = client.from_(table_name)
+        query = client.from_(table_name).select(select)
         
         # Apply filters if provided
         if filters:
-            # Build filter string
-            filter_conditions = []
             for column, value in filters.items():
                 if isinstance(value, (list, tuple)):
                     # Handle IN operations
-                    values_str = ','.join(str(v) for v in value)
-                    filter_conditions.append(f"{column}=in.({values_str})")
+                    query = query.in_(column, value)
                 else:
                     # Handle exact match
-                    filter_conditions.append(f"{column}=eq.{value}")
-            
-            # Apply filters using headers
-            if filter_conditions:
-                query.headers = {"Prefer": f"return=representation"}
-                for condition in filter_conditions:
-                    query.headers[condition] = "true"
+                    query = query.eq(column, value)
         
         # Calculate offset for pagination
         offset = (page - 1) * page_size
         
         # Get total count with filters
-        count_result = await query.select("*", count='exact').execute()
-        total_count = count_result.count if count_result.count is not None else 0
+        count_query = client.from_(table_name).select("id")
+        if filters:
+            for column, value in filters.items():
+                if isinstance(value, (list, tuple)):
+                    count_query = count_query.in_(column, value)
+                else:
+                    count_query = count_query.eq(column, value)
+                    
+        count_result = await count_query.execute()
+        total_count = len(count_result.data)
         
         if total_count == 0:
             return {
@@ -153,16 +161,21 @@ async def read_paginated_with_filter(
                 }
             }
         
-        # Get paginated data with filters
-        query = query.select(select)
-        query.headers.update({
-            "Range-Unit": "items",
-            "Range": f"{offset}-{offset + page_size - 1}"
-        })
-        result = await query.execute()
-        
-        # Calculate metadata
+        # Calculate total pages
         total_pages = (total_count + page_size - 1) // page_size
+        
+        # Adjust page if it exceeds total pages
+        if page > total_pages:
+            page = total_pages
+            offset = (page - 1) * page_size
+        
+        # Get paginated data with filters
+        result = await (
+            query
+            .order("id")  # Ensure consistent ordering
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
         
         return {
             "data": result.data,
